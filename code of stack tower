@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>STACK Tower</title>
+
+<style>
+    * {
+        box-sizing: border-box;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+        margin: 0;
+        overflow: hidden;
+        font-family: Arial, sans-serif;
+        background: linear-gradient(#101827, #18253a);
+        color: white;
+        user-select: none;
+    }
+
+    #game {
+        position: relative;
+        width: 100vw;
+        height: 100vh;
+        overflow: hidden;
+    }
+
+    /* Background */
+    .bg {
+        position: absolute;
+        inset: 0;
+        background:
+            radial-gradient(circle at 20% 20%, rgba(255,255,255,.08) 1px, transparent 2px),
+            radial-gradient(circle at 80% 30%, rgba(255,255,255,.06) 1px, transparent 2px);
+        background-size: 70px 70px;
+    }
+
+    #score {
+        position: absolute;
+        top: 25px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 34px;
+        font-weight: bold;
+        z-index: 20;
+    }
+
+    #best {
+        position: absolute;
+        top: 68px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 15px;
+        opacity: .65;
+        z-index: 20;
+    }
+
+    #towerArea {
+        position: absolute;
+        left: 50%;
+        bottom: 70px;
+        transform: translateX(-50%);
+        width: min(92vw, 420px);
+        height: calc(100vh - 140px);
+    }
+
+    #tower {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        bottom: 0;
+    }
+
+    .block {
+        position: absolute;
+        height: 42px;
+        border-radius: 6px;
+        box-shadow:
+            inset 0 2px rgba(255,255,255,.25),
+            0 5px 12px rgba(0,0,0,.25);
+    }
+
+    #movingBlock {
+        position: absolute;
+        height: 42px;
+        border-radius: 6px;
+        z-index: 10;
+        box-shadow:
+            inset 0 2px rgba(255,255,255,.3),
+            0 5px 15px rgba(0,0,0,.3);
+    }
+
+    #ground {
+        position: absolute;
+        bottom: 25px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: min(92vw, 420px);
+        height: 45px;
+        border-radius: 8px;
+        background: linear-gradient(#454f61, #252d3b);
+        box-shadow: 0 8px 20px rgba(0,0,0,.4);
+    }
+
+    #message {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        text-align: center;
+        z-index: 50;
+    }
+
+    #message h1 {
+        margin: 0 0 10px;
+        font-size: 48px;
+        letter-spacing: 3px;
+    }
+
+    #message p {
+        margin: 0 0 25px;
+        opacity: .7;
+    }
+
+    button {
+        border: 0;
+        padding: 14px 35px;
+        border-radius: 30px;
+        font-size: 17px;
+        font-weight: bold;
+        color: white;
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        box-shadow: 0 8px 20px rgba(0,0,0,.3);
+        cursor: pointer;
+    }
+
+    button:active {
+        transform: scale(.96);
+    }
+
+    #tapHint {
+        position: absolute;
+        bottom: 30px;
+        left: 50%;
+        transform: translateX(-50%);
+        opacity: .45;
+        font-size: 13px;
+        z-index: 30;
+    }
+
+    .perfect {
+        position: absolute;
+        color: #fff;
+        font-weight: bold;
+        font-size: 18px;
+        animation: pop .5s ease forwards;
+        pointer-events: none;
+        z-index: 100;
+    }
+
+    @keyframes pop {
+        0% {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+        }
+        100% {
+            opacity: 0;
+            transform: translateY(-45px) scale(1.3);
+        }
+    }
+
+    .shake {
+        animation: shake .2s linear;
+    }
+
+    @keyframes shake {
+        0% { transform: translateX(-50%) translateX(0); }
+        25% { transform: translateX(-50%) translateX(-5px); }
+        50% { transform: translateX(-50%) translateX(5px); }
+        75% { transform: translateX(-50%) translateX(-4px); }
+        100% { transform: translateX(-50%) translateX(0); }
+    }
+</style>
+</head>
+
+<body>
+
+<div id="game">
+
+    <div class="bg"></div>
+
+    <div id="score">0</div>
+    <div id="best">BEST: 0</div>
+
+    <div id="towerArea">
+        <div id="tower"></div>
+        <div id="movingBlock"></div>
+    </div>
+
+    <div id="ground"></div>
+
+    <div id="tapHint">TAP / CLICK TO STACK</div>
+
+    <div id="message">
+        <h1>STACK</h1>
+        <p>Build the tallest tower!</p>
+        <button id="startBtn">START GAME</button>
+    </div>
+
+</div>
+
+<script>
+
+const tower = document.getElementById("tower");
+const movingBlock = document.getElementById("movingBlock");
+const scoreText = document.getElementById("score");
+const bestText = document.getElementById("best");
+const message = document.getElementById("message");
+const startBtn = document.getElementById("startBtn");
+const game = document.getElementById("game");
+
+let blocks = [];
+
+let score = 0;
+let best = Number(localStorage.getItem("stackBest")) || 0;
+
+let gameRunning = false;
+let animationId;
+
+let direction = 1;
+let speed = 2.8;
+
+let blockWidth;
+let blockHeight = 42;
+
+let movingX = 0;
+let level = 0;
+
+const colors = [
+    "#ff5f6d",
+    "#ff9966",
+    "#ffd166",
+    "#06d6a0",
+    "#00b4d8",
+    "#5e60ce",
+    "#9b5de5",
+    "#f15bb5"
+];
+
+bestText.textContent = "BEST: " + best;
+
+
+/* Start Game */
+
+startBtn.addEventListener("click", startGame);
+
+function startGame() {
+
+    cancelAnimationFrame(animationId);
+
+    blocks = [];
+    score = 0;
+    level = 0;
+    speed = 2.8;
+
+    scoreText.textContent = "0";
+
+    tower.innerHTML = "";
+
+    message.style.display = "none";
+
+    const areaWidth = document.getElementById("towerArea").clientWidth;
+
+    blockWidth = areaWidth * 0.58;
+
+    // Base block
+    createBlock(
+        (areaWidth - blockWidth) / 2,
+        0,
+        blockWidth,
+        colors[0]
+    );
+
+    blocks.push({
+        x: (areaWidth - blockWidth) / 2,
+        width: blockWidth,
+        y: 0
+    });
+
+    level = 1;
+
+    createMovingBlock();
+
+    gameRunning = true;
+
+    animate();
+}
+
+
+/* Create Block */
+
+function createBlock(x, y, width, color) {
+
+    const block = document.createElement("div");
+
+    block.className = "block";
+
+    block.style.width = width + "px";
+    block.style.left = x + "px";
+    block.style.bottom = y + "px";
+    block.style.background = color;
+
+    tower.appendChild(block);
+
+    return block;
+}
+
+
+/* Moving Block */
+
+function createMovingBlock() {
+
+    const previous = blocks[blocks.length - 1];
+
+    blockWidth = previous.width;
+
+    movingX = 0;
+
+    movingBlock.style.width = blockWidth + "px";
+    movingBlock.style.left = movingX + "px";
+    movingBlock.style.bottom =
+        (level * blockHeight) + "px";
+
+    movingBlock.style.background =
+        colors[level % colors.length];
+
+    direction = 1;
+
+    // Increase difficulty
+    speed = Math.min(7, 2.8 + level * 0.12);
+}
+
+
+/* Animation */
+
+function animate() {
+
+    if (!gameRunning) return;
+
+    const areaWidth =
+        document.getElementById("towerArea").clientWidth;
+
+    movingX += speed * direction;
+
+    if (movingX <= 0) {
+        movingX = 0;
+        direction = 1;
+    }
+
+    if (movingX + blockWidth >= areaWidth) {
+        movingX = areaWidth - blockWidth;
+        direction = -1;
+    }
+
+    movingBlock.style.left = movingX + "px";
+
+    animationId = requestAnimationFrame(animate);
+}
+
+
+/* Drop Block */
+
+function dropBlock() {
+
+    if (!gameRunning) return;
+
+    const previous = blocks[blocks.length - 1];
+
+    const currentLeft = movingX;
+
+    const currentRight =
+        currentLeft + blockWidth;
+
+    const previousLeft = previous.x;
+
+    const previousRight =
+        previous.x + previous.width;
+
+    // Calculate overlap
+    const overlapLeft =
+        Math.max(currentLeft, previousLeft);
+
+    const overlapRight =
+        Math.min(currentRight, previousRight);
+
+    const overlap =
+        overlapRight - overlapLeft;
+
+    // No overlap = Game Over
+    if (overlap <= 0) {
+
+        gameOver();
+        return;
+    }
+
+    // New width after cutting
+    const newWidth = overlap;
+
+    const newX = overlapLeft;
+
+    // Perfect placement
+    const difference =
+        Math.abs(currentLeft - previousLeft);
+
+    if (difference < 5) {
+        showPerfect();
+    }
+
+    // Create actual block
+    createBlock(
+        newX,
+        level * blockHeight,
+        newWidth,
+        colors[level % colors.length]
+    );
+
+    blocks.push({
+        x: newX,
+        width: newWidth,
+        y: level * blockHeight
+    });
+
+    score++;
+    level++;
+
+    scoreText.textContent = score;
+
+    if (score > best) {
+        best = score;
+        bestText.textContent = "BEST: " + best;
+        localStorage.setItem("stackBest", best);
+    }
+
+    // Remove moving block visually for a moment
+    movingBlock.style.width = newWidth + "px";
+    movingBlock.style.left = newX + "px";
+
+    // Slight tower movement when screen fills
+    if (level > 8) {
+
+        const shift =
+            Math.min(
+                (level - 8) * blockHeight,
+                220
+            );
+
+        tower.style.bottom = shift + "px";
+    }
+
+    createMovingBlock();
+}
+
+
+/* Perfect */
+
+function showPerfect() {
+
+    const text = document.createElement("div");
+
+    text.className = "perfect";
+    text.textContent = "PERFECT!";
+
+    text.style.left =
+        (movingX + blockWidth / 2) + "px";
+
+    text.style.bottom =
+        (level * blockHeight + 50) + "px";
+
+    tower.appendChild(text);
+
+    setTimeout(() => {
+        text.remove();
+    }, 500);
+}
+
+
+/* Game Over */
+
+function gameOver() {
+
+    gameRunning = false;
+
+    cancelAnimationFrame(animationId);
+
+    game.classList.add("shake");
+
+    setTimeout(() => {
+        game.classList.remove("shake");
+    }, 250);
+
+    message.style.display = "block";
+
+    message.querySelector("h1").textContent = "GAME OVER";
+
+    message.querySelector("p").textContent =
+        "Your score: " + score;
+
+    startBtn.textContent = "PLAY AGAIN";
+}
+
+
+/* Controls */
+
+game.addEventListener("click", function(e) {
+
+    if (
+        e.target === startBtn ||
+        e.target.closest("button")
+    ) return;
+
+    dropBlock();
+});
+
+
+/* Mobile Touch */
+
+game.addEventListener("touchstart", function(e) {
+
+    if (!gameRunning) return;
+
+    e.preventDefault();
+
+    dropBlock();
+
+}, { passive: false });
+
+
+/* Keyboard */
+
+document.addEventListener("keydown", function(e) {
+
+    if (
+        e.code === "Space" ||
+        e.code === "Enter" ||
+        e.code === "ArrowDown"
+    ) {
+
+        e.preventDefault();
+
+        if (gameRunning) {
+            dropBlock();
+        }
+    }
+
+});
+
+
+/* Prevent accidental scrolling */
+
+document.body.addEventListener("touchmove", function(e) {
+
+    if (gameRunning) {
+        e.preventDefault();
+    }
+
+}, { passive: false });
+
+</script>
+
+</body>
+</html>
